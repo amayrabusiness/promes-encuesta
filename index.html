@@ -854,12 +854,12 @@ function queueSend(final){
   try{ localStorage.setItem(QK, JSON.stringify(q)); }catch(e){}
   flush();
 }
-let flushing=false, backoff=2000, retryT=null;
+let flushing=false, pendingFlush=false, backoff=2000, retryT=null;
 async function flush(){
   let q; try{ q=JSON.parse(localStorage.getItem(QK)); }catch(e){ q=null; }
   if (!q || (!q.resp && !q.contact)) return;
   if (!CONFIG.ENDPOINT || CONFIG.ENDPOINT.includes("{{")){ window.__sent=(window.__sent||[]); window.__sent.push(JSON.parse(JSON.stringify(q))); console.log("[PROMES · modo prueba]", q); localStorage.removeItem(QK); markSaved(q, true); return; }
-  if (flushing) return; flushing=true;
+  if (flushing){ pendingFlush=true; return; } flushing=true;
   const items=[]; if(q.resp) items.push({kind:"resp",data:q.resp}); if(q.contact) items.push({kind:"contact",data:q.contact});
   try{
     const r = await fetch(CONFIG.ENDPOINT,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({items}),redirect:"follow"});
@@ -871,7 +871,7 @@ async function flush(){
     backoff=2000; markSaved(q);
   }catch(e){
     clearTimeout(retryT); retryT=setTimeout(flush, backoff); backoff=Math.min(backoff*2, 60000);
-  }finally{ flushing=false; }
+  }finally{ flushing=false; if (pendingFlush){ pendingFlush=false; setTimeout(flush, 150); } }
 }
 addEventListener("online", flush);
 addEventListener("pagehide", ()=>{
