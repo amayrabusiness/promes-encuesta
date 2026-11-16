@@ -731,6 +731,7 @@ function isComplete(step){
 function finish(){
   S.done=true; S.finished=new Date().toISOString(); save();
   queueSend(true);
+  try{ beaconNow(); }catch(e){}
   go(1);
 }
 
@@ -862,7 +863,9 @@ async function flush(){
   if (flushing){ pendingFlush=true; return; } flushing=true;
   const items=[]; if(q.resp) items.push({kind:"resp",data:q.resp}); if(q.contact) items.push({kind:"contact",data:q.contact});
   try{
-    const r = await fetch(CONFIG.ENDPOINT,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({items}),redirect:"follow"});
+    const ctl = new AbortController(); const tmo = setTimeout(()=>ctl.abort(), 15000);
+    const r = await fetch(CONFIG.ENDPOINT,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({items}),redirect:"follow",signal:ctl.signal});
+    clearTimeout(tmo);
     const j = await r.json();
     if (!j.ok) throw new Error(j.error||"error");
     // solo borra si nada nuevo ha entrado mientras tanto
@@ -874,13 +877,14 @@ async function flush(){
   }finally{ flushing=false; if (pendingFlush){ pendingFlush=false; setTimeout(flush, 150); } }
 }
 addEventListener("online", flush);
-addEventListener("pagehide", ()=>{
+function beaconNow(){
   let q; try{ q=JSON.parse(localStorage.getItem(QK)); }catch(e){ q=null; }
   if (q && CONFIG.ENDPOINT && !CONFIG.ENDPOINT.includes("{{") && navigator.sendBeacon){
     const items=[]; if(q.resp) items.push({kind:"resp",data:q.resp}); if(q.contact) items.push({kind:"contact",data:q.contact});
     navigator.sendBeacon(CONFIG.ENDPOINT, new Blob([JSON.stringify({items})],{type:"text/plain;charset=utf-8"}));
   }
-});
+}
+addEventListener("pagehide", beaconNow);
 
 /* ============================================================
    UTILIDADES
